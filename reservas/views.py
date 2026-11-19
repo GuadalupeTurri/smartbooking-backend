@@ -1,6 +1,7 @@
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Sala, Reserva
 from .serializers import SalaSerializer, ReservaSerializer
@@ -16,10 +17,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
     serializer_class = ReservaSerializer
     permission_classes = [IsAuthenticated]
 
+    def es_administrador(self):
+        usuario = self.request.user
+        return usuario.is_superuser or usuario.rol == 'ADMIN'
+
     def get_queryset(self):
         usuario = self.request.user
 
-        if usuario.rol == 'ADMIN':
+        if self.es_administrador():
             return Reserva.objects.all().order_by('-creada')
 
         return Reserva.objects.filter(
@@ -27,26 +32,36 @@ class ReservaViewSet(viewsets.ModelViewSet):
         ).order_by('-creada')
 
     def perform_create(self, serializer):
+        if self.es_administrador():
+            raise PermissionDenied(
+                'El administrador no puede crear reservas.'
+            )
+
         serializer.save(usuario=self.request.user)
 
-    def update(self, request, *args, **kwargs):
-        reserva = self.get_object()
+    def perform_update(self, serializer):
+        if self.es_administrador():
+            raise PermissionDenied(
+                'El administrador no puede modificar reservas.'
+            )
 
-        if reserva.usuario != request.user:
-            from rest_framework.exceptions import PermissionDenied
+        if serializer.instance.usuario != self.request.user:
             raise PermissionDenied(
                 'No podés modificar una reserva de otro usuario.'
             )
 
-        return super().update(request, *args, **kwargs)
+        serializer.save()
 
-    def destroy(self, request, *args, **kwargs):
-        reserva = self.get_object()
-
-        if reserva.usuario != request.user:
-            from rest_framework.exceptions import PermissionDenied
+    def perform_destroy(self, instance):
+        if self.es_administrador():
             raise PermissionDenied(
-                'No podés eliminar una reserva de otro usuario.'
+                'El administrador no puede cancelar reservas.'
             )
 
-        return super().destroy(request, *args, **kwargs)
+        if instance.usuario != self.request.user:
+            raise PermissionDenied(
+                'No podés cancelar una reserva de otro usuario.'
+            )
+
+        instance.estado = Reserva.Estado.CANCELADA
+        instance.save(update_fields=['estado'])
