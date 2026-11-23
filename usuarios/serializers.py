@@ -58,4 +58,19 @@ class PerfilSerializer(serializers.ModelSerializer):
             'rol'
         ]
 
+class AdminUsuarioSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Usuario
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'rol',
+            'is_active'
+        ]
+        read_only_fields = ['id']
+
 
